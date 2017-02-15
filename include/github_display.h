@@ -143,12 +143,21 @@ github_display::github_display(const std::string & p_email,
       if(p_dedicated_account)
 	{
 	  // Change remote name to indicate to ssh which user key to use
-	  std::string l_remote_root = "git@github.com";
-	  if(l_remote_root != l_remote.substr(0,l_remote_root.size()))
+	  size_t l_pos = l_remote.find(":");
+	  if(std::string::npos == l_pos)
 	    {
-	      throw quicky_exception::quicky_logic_exception("Remote doesn`t start with " + l_remote_root + " : \"" + l_remote + "\"",__LINE__,__FILE__);
+	      throw quicky_exception::quicky_logic_exception("Remote doesn`t contain ':' \"" + l_remote + "\"",__LINE__,__FILE__);
 	    }
-	  size_t l_pos = p_remote.find("/");
+	  std::string l_remote_root = l_remote.substr(0,l_pos);
+
+	  l_pos = l_remote_root.find("@");
+	  if(std::string::npos == l_pos)
+	    {
+	      throw quicky_exception::quicky_logic_exception("Remote root \"" + l_remote_root + "\"doesn`t contain '@' \"" + l_remote + "\"",__LINE__,__FILE__);
+	    }
+	  std::string l_host = l_remote_root.substr(l_pos + 1);
+
+	  l_pos = p_remote.find("/");
 	  if(std::string::npos == l_pos)
 	    {
 	      throw quicky_exception::quicky_logic_exception("Unable to find / character in remote : \"" + l_remote + "\"",__LINE__,__FILE__);
@@ -198,10 +207,11 @@ github_display::github_display(const std::string & p_email,
 	  // Read ssh file to check if dedicated account is already managed
 	  std::string l_line("");
 	  bool l_already_managed = false;
+	  std::string l_fake_host = l_host + "-" + l_user_name;
 	  while(!l_ssh_config.eof() && !l_already_managed)
 	    {
 	      getline(l_ssh_config, l_line);
-	      l_already_managed |= std::string::npos != l_line.find(l_user_name);
+	      l_already_managed |= std::string::npos != l_line.find(l_fake_host);
 	    }
 	  l_ssh_config.close();
 	  if(!l_already_managed)
@@ -212,8 +222,8 @@ github_display::github_display(const std::string & p_email,
 		 {
 		   throw quicky_exception::quicky_logic_exception("Unable to open file \"" + l_ssh_config_file_name + "\" to complete it", __LINE__, __FILE__);
 		 }
-	       l_new_ssh_config << "Host github.com-" << l_user_name << std::endl ;
-	       l_new_ssh_config << "    HostName github.com" << std::endl ;
+	       l_new_ssh_config << "Host " << l_fake_host << std::endl ;
+	       l_new_ssh_config << "    HostName " << l_host << std::endl ;
 	       l_new_ssh_config << "    User git" << std::endl ;
 	       l_new_ssh_config << "    IdentityFile ~/.ssh/" << p_key_file << std::endl;
 	       l_new_ssh_config.close();
