@@ -18,14 +18,37 @@
 #include "github_display.h"
 #include "quicky_exception.h"
 #include "my_bmp.h"
+#include "parameter_manager.h"
+#include "parameter.h"
 
 #include <iostream>
 
-int main(void)
+int main(int argc,char ** argv)
 {
   try
     {
-      lib_bmp::my_bmp l_bmp_file("color.bmp");
+      // Defining application command line parameters
+      parameter_manager::parameter_manager l_param_manager("github_display.exe","--",1);
+
+      parameter_manager::parameter<std::string> l_bmp_file_param("bmp_file",false,"color.bmp");
+      l_param_manager.add(l_bmp_file_param);
+
+      parameter_manager::parameter<std::string> l_email_param("email",true,"");
+      l_param_manager.add(l_email_param);
+
+      parameter_manager::parameter<std::string> l_remote_param("remote",true,"");
+      l_param_manager.add(l_remote_param);
+
+      parameter_manager::parameter<std::string> l_key_file_param("key_file",true,"");
+      l_param_manager.add(l_key_file_param);
+
+      parameter_manager::parameter<bool> l_dedicated_account_param("dedicated_account",true,false);
+      l_param_manager.add(l_dedicated_account_param);
+
+      // Treating parameters
+      l_param_manager.treat_parameters(argc,argv);
+
+      lib_bmp::my_bmp l_bmp_file(l_bmp_file_param.get_value());
       if(l_bmp_file.get_width() != 53 && l_bmp_file.get_height() != 8)
 	{
 	  throw quicky_exception::quicky_logic_exception("Bad bmp file dimensions (" + std::to_string(l_bmp_file.get_width()) + "," + std::to_string(l_bmp_file.get_height()) + ")",__LINE__,__FILE__);
@@ -38,7 +61,11 @@ int main(void)
 	  {lib_bmp::my_color_alpha(0x44, 0xa3, 0x40,0), github_display::t_level::L1},
 	  {lib_bmp::my_color_alpha(0x1e, 0x68, 0x23,0), github_display::t_level::L1}
 	};
-      github_display l_display;
+      github_display l_display(l_email_param.get_value(),
+			       l_remote_param.get_value(),
+			       l_key_file_param.get_value(),
+			       l_dedicated_account_param.get_value()
+			       );
       for(unsigned int l_y = 0;l_y < 7; ++l_y)
 	{
 	  for(unsigned int l_x = 0;l_x < 52; ++l_x)

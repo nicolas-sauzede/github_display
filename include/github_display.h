@@ -34,6 +34,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <pwd.h>
 
 #if __GNUC__ < 5
 namespace std
@@ -51,7 +52,11 @@ namespace std
 class github_display
 {
 public:
-  github_display(void);
+  github_display(const std::string & p_email,
+		 const std::string & p_remote,
+		 const std::string & p_key_file,
+		 bool p_dedicated_account
+		 );
   typedef enum class level {L0 = 0, L1 = 1, L2 = 9, L3 = 17, L4 = 28} t_level;
   inline void set_pixel(unsigned int p_x,
 			unsigned int p_y,
@@ -115,11 +120,12 @@ std::map<std::string, unsigned int> github_display::m_day_to_line =
   };
 
 //------------------------------------------------------------------------------
-github_display::github_display(void)
+github_display::github_display(const std::string & p_email,
+			       const std::string & p_remote,
+			       const std::string & p_key_file,
+			       bool p_dedicated_account
+			       )
 {
-  std::string l_email("ets.thevenon.gerard@free.fr");
-  std::string l_remote("git@github.com-githubdisplay:githubdisplay/test.git");
-  std::string l_user_name("githubdisplay");
   for(unsigned int l_y = 0; l_y < m_nb_lines ; ++l_y)
     {
       for(unsigned int l_x = 0; l_x < m_nb_column ; ++l_x)
@@ -131,12 +137,101 @@ github_display::github_display(void)
   if(nullptr == l_git_dir)
     {
       std::cout << "Create local git repo" << std::endl;
+
+      std::string l_remote = p_remote;
+      std::string l_user_name = "";
+      if(p_dedicated_account)
+	{
+	  // Change remote name to indicate to ssh which user key to use
+	  std::string l_remote_root = "git@github.com";
+	  if(l_remote_root != l_remote.substr(0,l_remote_root.size()))
+	    {
+	      throw quicky_exception::quicky_logic_exception("Remote doesn`t start with " + l_remote_root + " : \"" + l_remote + "\"",__LINE__,__FILE__);
+	    }
+	  size_t l_pos = p_remote.find("/");
+	  if(std::string::npos == l_pos)
+	    {
+	      throw quicky_exception::quicky_logic_exception("Unable to find / character in remote : \"" + l_remote + "\"",__LINE__,__FILE__);
+	    }
+	  l_user_name = p_remote.substr(l_remote_root.size() + 1, l_pos - l_remote_root.size() - 1);
+
+	  if("" == p_key_file)
+	    {
+	      throw quicky_exception::quicky_logic_exception("You forgot to indicate key file to use for user \"" + l_user_name + "\"",__LINE__,__FILE__);
+	    }
+
+	  if("" == p_email)
+	    {
+	      throw quicky_exception::quicky_logic_exception("You forgot to indicate email to use for user \"" + l_user_name + "\"",__LINE__,__FILE__);
+	    }
+
+	  l_remote = l_remote_root + "-" + l_user_name + p_remote.substr(l_remote_root.size());
+
+	  // Determine unix user name
+	  uid_t l_uid = geteuid();
+	  struct passwd *l_pw = getpwuid (l_uid);
+	  if(nullptr == l_pw)
+	    {
+	      throw quicky_exception::quicky_logic_exception("Unable to find Unix user name", __LINE__, __FILE__);
+	    }
+
+	  // Build path containing ssh config file
+	  std::string l_unix_user_name = l_pw->pw_name;
+	  std::ifstream l_ssh_config;
+	  std::string l_ssh_config_file_name = "/home/" + l_unix_user_name + "/.ssh/config";
+
+	  // Try to open the file and create it if necessary
+	  l_ssh_config.open(l_ssh_config_file_name);
+	  if(!l_ssh_config.is_open())
+	    {
+	      std::ofstream l_new_ssh_config;
+	      l_new_ssh_config.open(l_ssh_config_file_name);
+	      if(!l_new_ssh_config.is_open())
+		{
+		  throw quicky_exception::quicky_logic_exception("Unable to create file \"" + l_ssh_config_file_name + "\"", __LINE__, __FILE__);
+		}
+	      l_new_ssh_config.close();
+	      l_ssh_config.open(l_ssh_config_file_name);
+	      assert(l_ssh_config.is_open());
+	    }
+
+	  // Read ssh file to check if dedicated account is already managed
+	  std::string l_line("");
+	  bool l_already_managed = false;
+	  while(!l_ssh_config.eof() && !l_already_managed)
+	    {
+	      getline(l_ssh_config, l_line);
+	      l_already_managed |= std::string::npos != l_line.find(l_user_name);
+	    }
+	  l_ssh_config.close();
+	  if(!l_already_managed)
+	    {
+	       std::ofstream l_new_ssh_config;
+	       l_new_ssh_config.open(l_ssh_config_file_name,std::ofstream::out | std::ofstream::app);
+	       if(!l_new_ssh_config.is_open())
+		 {
+		   throw quicky_exception::quicky_logic_exception("Unable to open file \"" + l_ssh_config_file_name + "\" to complete it", __LINE__, __FILE__);
+		 }
+	       l_new_ssh_config << "Host github.com-" << l_user_name << std::endl ;
+	       l_new_ssh_config << "    HostName github.com" << std::endl ;
+	       l_new_ssh_config << "    User git" << std::endl ;
+	       l_new_ssh_config << "    IdentityFile ~/.ssh/" << p_key_file << std::endl;
+	       l_new_ssh_config.close();
+	    }
+	}
+
       sh_file l_create_repo_file;
       std::string l_file_name("./create_repo.sh");
       l_create_repo_file.open(l_file_name);
       l_create_repo_file << "git init" << std::endl ;
-      l_create_repo_file << "git config --local user.name \"" << l_user_name << "\"" << std::endl ;
-      l_create_repo_file << "git config --local user.email \"" << l_email << "\"" << std::endl ;
+      if("" != l_user_name)
+	{
+	  l_create_repo_file << "git config --local user.name \"" << l_user_name << "\"" << std::endl ;
+	}
+      if("" != p_email)
+	{
+	  l_create_repo_file << "git config --local user.email \"" << p_email << "\"" << std::endl ;
+	}
       l_create_repo_file << "\\rm -rf display_file README" << std::endl ;
       l_create_repo_file << "touch display_file" << std::endl;
       l_create_repo_file << "echo \"# Display file\" >> display_file" << std::endl;
@@ -159,7 +254,6 @@ github_display::github_display(void)
 
       write_commit_command(l_create_repo_file,"Initial import",l_stream.str());
 
-      //      l_create_repo_file << "git remote add origin ssh://gitolite@codex.cro.st.com/adas-verif/u/julien_thevenon/toto/TEST/initial.git" << std::endl;
       l_create_repo_file << "git remote add origin " << l_remote << std::endl;
       l_create_repo_file << "git remote update" << std::endl;
       l_create_repo_file << "git push -fu origin master" << std::endl;

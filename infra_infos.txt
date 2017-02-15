@@ -1,4 +1,4 @@
-depend: quicky_exception quicky_utils lib_bmp
+depend: quicky_exception quicky_utils lib_bmp parameter_manager
 ######:-Wall -ansi -pedantic -g -std=c++11 -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -O3 -DNDEBUG -DSAVE_THREAD -DGUI
 CFLAGS:-Wall -ansi -pedantic -g -std=c++11 -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -O0 -g
 LDFLAGS:
